@@ -8,7 +8,7 @@ import { Floor, GroundBody } from './objects/floor'
 import { createWall } from './objects/wall'
 import { createBall, ballMaterial } from './objects/ball'
 import { createPoolTable, tableMaterial } from './objects/table'
-import { createDirectionArrow } from './utils/arrow'
+import { createCueController } from './controllers/cueController'
 
 
 const wallsConfig = [
@@ -53,6 +53,7 @@ interface BallData {
 
 function App() {
   const refContainer = useRef<HTMLDivElement>(null)
+  const cueControllerRef = useRef<any>(null)
 
   useEffect(() => {
     if (!refContainer.current) return
@@ -142,16 +143,13 @@ function App() {
     
     const balls: BallData[] = []
     const ballMeshes: THREE.Mesh[] = []
-    let selectedBall: BallData | null = null
 
     const handleMouseMove = (event: MouseEvent) => {
       mousePosition.x = (event.clientX / window.innerWidth) * 2 - 1
       mousePosition.y = -(event.clientY / window.innerHeight) * 2 + 1
 
-      // Raycaster - detecta mouse sobre bolas
       raycaster.setFromCamera(mousePosition, camera)
       const intersects = raycaster.intersectObjects(scene.children)
-      // console.log("intersects", intersects)
 
         for(let j = 0; j < balls.length; j++){
           if(balls[j].mesh.name === intersects[0].object.name){
@@ -163,89 +161,21 @@ function App() {
           }
         }
     }
-
-    const directionArrow = createDirectionArrow()
-    scene.add(directionArrow.group)
-
-    const handleHitBall = (event: MouseEvent) => {
-      mousePosition.x = (event.clientX / window.innerWidth) * 2 - 1
-      mousePosition.y = -(event.clientY / window.innerHeight) * 2 + 1
-
-      // Raycaster - detecta mouse sobre bolas
-      raycaster.setFromCamera(mousePosition, camera)
-      const intersects = raycaster.intersectObjects(scene.children)
-      if (!intersects[0]?.object) return
-      
-      const tablePlane = new THREE.Plane(new THREE.Vector3(0, 20, 0), -4.5)
-
-        for(let j = 0; j < balls.length; j++){
-
-          if(balls[j].mesh.name === intersects[0].object.name){
-
-            if (balls[j].mesh.name !== 'White') return
-
-            if (balls[j] && !selectedBall) {
-              // Seleciona a bola
-              selectedBall = balls[j]
-              directionArrow.show()
-              orbit.enabled = false
-              console.log('Bola selecionada!: ', directionArrow.isVisible())
-
-            } else if (selectedBall) {
-              const ballPosition = new THREE.Vector3().copy(selectedBall.body.position)
-               raycaster.setFromCamera(mousePosition, camera)
-              const newMousePosition = new THREE.Vector3()
-              raycaster.ray.intersectPlane(tablePlane, newMousePosition)
-
-              if (newMousePosition) {
-                const direction = new THREE.Vector3()
-                  .subVectors(newMousePosition, ballPosition)
-                  .normalize()
-            
-                const power = 10
-                selectedBall.body.velocity.set(
-                  direction.x * power,
-                  0,
-                  direction.z * power
-                )
-                console.log('Tacada!')
-              }
-              selectedBall.setHighlight(false)
-              selectedBall = null
-              directionArrow.hide()
-              orbit.enabled = true 
-            }
-
-              // const direction = new THREE.Vector3()
-              // camera.getWorldDirection(direction)
-              
-              // direction.y = 0
-              // direction.normalize()
-              
-              // balls[j].body.velocity.set(
-              //   direction.x * 10,
-              //   0,
-              //   direction.z * 10
-              // )
-          }
-        }
-
-    }
-
-    const handleCancelHit = (event: MouseEvent) => {
-      event.preventDefault()
-      if (selectedBall) {
-        selectedBall.setHighlight(false)
-        selectedBall = null
-        directionArrow.hide()
-        orbit.enabled = true
-        console.log('Seleção cancelada')
-      }
-    }
-
+    
     window.addEventListener('mousemove', handleMouseMove)
-    window.addEventListener('click', handleHitBall)
-    window.addEventListener('contextmenu', handleCancelHit)
+
+    
+    // Controlador de hit
+    const cueController = createCueController({
+      camera,
+      scene,
+      balls,
+      hitPower: 10,
+      cueBallName: 'White',
+    })
+    cueControllerRef.current = cueController
+    
+    cueController.enable()
 
     // Contact Materials
     const ballBallContact = new CANNON.ContactMaterial(ballMaterial, ballMaterial, {
@@ -308,9 +238,7 @@ function App() {
 
       world.step(fixedTimeStep, deltaTime, maxSubSteps)
 
-      // Atualiza posição das bolas
       balls.forEach(ball => ball.update())
-
 
       renderer.render(scene, camera)
     }
@@ -320,11 +248,13 @@ function App() {
     return () => {
       window.removeEventListener('resize', handleResize)
       window.removeEventListener('mousemove', handleMouseMove)
-      window.removeEventListener('click', handleHitBall)
       document.body.style.cursor = 'default'
       renderer.dispose()
       if (refContainer.current?.contains(renderer.domElement)) {
         refContainer.current.removeChild(renderer.domElement)
+      }
+      if (cueControllerRef.current) {
+        cueController.disable()
       }
     }
   }, [])
@@ -334,10 +264,10 @@ function App() {
       <header className='headerContainer'>
         <h1 className='mainTitle'>Billard Game</h1>
       </header>
-      <button 
+      {/* <button 
       className='testButton'>
         <h2 className='mainTitle'>Test Button</h2>
-      </button>
+      </button> */}
       <main className='canvasContainer'>
         <div ref={refContainer}/>
       </main>
